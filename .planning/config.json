@@ -1,0 +1,6 @@
+{
+  "model_profile": "balanced",
+  "tdd_enforced": true,
+  "approval_required": false,
+  "default_agent": "orchestrator"
+}

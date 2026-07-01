@@ -1,0 +1,14 @@
+scripts/convert/models/*.onnx
+scripts/convert/models/*.onnx.data
+/*.onnx
+/*.onnx.data
+scripts/convert/common/__pycache__/*.*
+/.vs/
+scripts/convert/__pycache__/*.*
+src/MobileI2VConsole/bin/*
+src/MobileI2VConsole/obj/*
+tests/MobileI2VConsole.Tests/obj/*
+tests/MobileI2VConsole.Tests/bin/*
+scripts/convert/models/__pycache__/*
+scripts/model/*
+src/MobileI2VConsole/obj/*

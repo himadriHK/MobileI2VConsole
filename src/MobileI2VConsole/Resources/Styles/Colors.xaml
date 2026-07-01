@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<?xaml-comp compile="true" ?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- Primary Palette: Deep Indigo / Dark Theme for Creative AI App -->
+    <Color x:Key="Primary">#6750A4</Color>
+    <Color x:Key="PrimaryDark">#4F378B</Color>
+    <Color x:Key="PrimaryLight">#EADDFF</Color>
+    <Color x:Key="Secondary">#625B71</Color>
+    <Color x:Key="SecondaryDark">#4A4458</Color>
+    <Color x:Key="SecondaryLight">#E8DEF8</Color>
+    <Color x:Key="Tertiary">#7D5260</Color>
+    <Color x:Key="TertiaryDark">#633B48</Color>
+    <Color x:Key="TertiaryLight">#FFD8E4</Color>
+
+    <!-- Surface / Background -->
+    <Color x:Key="SurfaceDark">#1C1B1F</Color>
+    <Color x:Key="Surface">#1A1A2E</Color>
+    <Color x:Key="SurfaceLight">#2D2D44</Color>
+    <Color x:Key="SurfaceContainerLow">#1E1E32</Color>
+    <Color x:Key="SurfaceContainerHigh">#2A2A3E</Color>
+
+    <!-- On-Surface Colors -->
+    <Color x:Key="OnSurface">#E6E1E5</Color>
+    <Color x:Key="OnSurfaceVariant">#CAC4D0</Color>
+    <Color x:Key="OnPrimary">#FFFFFF</Color>
+    <Color x:Key="OnSecondary">#FFFFFF</Color>
+    <Color x:Key="OnTertiary">#FFFFFF</Color>
+
+    <!-- State Colors -->
+    <Color x:Key="Error">#F2B8B5</Color>
+    <Color x:Key="ErrorDark">#8C1D18</Color>
+    <Color x:Key="Warning">#FFD680</Color>
+    <Color x:Key="Success">#81C784</Color>
+    <Color x:Key="Info">#80DEEA</Color>
+
+    <!-- Accent / Highlight -->
+    <Color x:Key="Accent">#BB86FC</Color>
+    <Color x:Key="AccentAlt">#03DAC6</Color>
+
+    <!-- Disabled -->
+    <Color x:Key="Disabled">#1F1F1F</Color>
+    <Color x:Key="DisabledText">#6B6B6B</Color>
+
+    <!-- Standard MAUI Colors -->
+    <Color x:Key="White">#FFFFFF</Color>
+    <Color x:Key="Black">#000000</Color>
+    <Color x:Key="Gray100">#E1E1E1</Color>
+    <Color x:Key="Gray200">#C8C8C8</Color>
+    <Color x:Key="Gray300">#ACACAC</Color>
+    <Color x:Key="Gray400">#919191</Color>
+    <Color x:Key="Gray500">#6E6E6E</Color>
+    <Color x:Key="Gray600">#404040</Color>
+    <Color x:Key="Gray900">#212121</Color>
+    <Color x:Key="Gray950">#141414</Color>
+
+</ResourceDictionary>

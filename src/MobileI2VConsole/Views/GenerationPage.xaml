@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MobileI2VConsole.ViewModels"
+             x:Class="MobileI2VConsole.Views.GenerationPage"
+             x:DataType="vm:GenerationViewModel"
+             Title="Generating..."
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource PageBackgroundColor}">
+
+    <VerticalStackLayout Spacing="25" Padding="30" VerticalOptions="Center">
+
+        <!-- Animated indicator -->
+        <ActivityIndicator IsRunning="{Binding IsRunning}"
+                           Color="#4A90D9"
+                           HeightRequest="60"
+                           WidthRequest="60"
+                           HorizontalOptions="Center" />
+
+        <!-- Current step -->
+        <Label Text="{Binding StepName}"
+               FontSize="20"
+               FontAttributes="Bold"
+               HorizontalOptions="Center"
+               HorizontalTextAlignment="Center" />
+
+        <!-- Progress bar -->
+        <ProgressBar Progress="{Binding Progress}"
+                     ProgressColor="#4A90D9"
+                     HeightRequest="10" />
+
+        <!-- Progress text -->
+        <Label Text="{Binding ProgressText}"
+               FontSize="14"
+               HorizontalOptions="Center"
+               TextColor="Gray" />
+
+        <!-- Error message -->
+        <Label Text="{Binding ErrorMessage}"
+               FontSize="14"
+               HorizontalOptions="Center"
+               TextColor="#E94560"
+               IsVisible="{Binding ErrorMessage, Converter={x:Null}}" />
+
+        <!-- Cancel button (during generation) -->
+        <Button Text="Cancel"
+                Command="{Binding CancelCommand}"
+                BackgroundColor="#E94560"
+                TextColor="White"
+                CornerRadius="12"
+                HorizontalOptions="Center"
+                WidthRequest="200"
+                IsVisible="{Binding IsRunning}" />
+
+        <!-- View Result button (after completion) -->
+        <Button Text="▶ View Result"
+                Command="{Binding ViewResultCommand}"
+                BackgroundColor="#4A90D9"
+                TextColor="White"
+                CornerRadius="12"
+                HorizontalOptions="Center"
+                WidthRequest="200"
+                IsVisible="{Binding IsCompleted}" />
+
+    </VerticalStackLayout>
+</ContentPage>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 456 456">
+  <rect width="456" height="456" fill="#1A1A2E"/>
+  <g transform="translate(228,228)">
+    <!-- Simple film reel / play icon -->
+    <polygon points="-60,-40 60,0 -60,40" fill="#BB86FC"/>
+  </g>
+</svg>

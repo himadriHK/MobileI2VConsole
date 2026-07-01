@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Gentle Motion",
+    "prompt": "gentle motion, smooth and subtle movement, calm atmosphere",
+    "icon": "🌊"
+  },
+  {
+    "name": "Cinematic Pan",
+    "prompt": "cinematic panning shot, slow camera movement, film-like quality",
+    "icon": "🎬"
+  },
+  {
+    "name": "Flowing",
+    "prompt": "flowing movement, dynamic and organic, natural motion",
+    "icon": "💫"
+  },
+  {
+    "name": "Dramatic Zoom",
+    "prompt": "dramatic zoom in, intense motion, cinematic impact",
+    "icon": "🎯"
+  },
+  {
+    "name": "Waves",
+    "prompt": "waves rippling and flowing, fluid motion, water-like movement",
+    "icon": "🌊"
+  },
+  {
+    "name": "Breathe",
+    "prompt": "subtle breathing motion, gentle living movement, barely perceptible",
+    "icon": "🫧"
+  }
+]

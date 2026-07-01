@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MobileI2VConsole.ViewModels"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             x:Class="MobileI2VConsole.Views.ResultPage"
+             x:DataType="vm:ResultViewModel"
+             Title="Result"
+             BackgroundColor="{StaticResource PageBackgroundColor}">
+
+    <Grid RowDefinitions="*,Auto,Auto" Padding="20">
+
+        <!-- Video Player -->
+        <Border Grid.Row="0"
+                StrokeShape="RoundRectangle 16"
+                Stroke="Gray"
+                StrokeThickness="1"
+                BackgroundColor="#1A1A2E"
+                Margin="0,0,0,10">
+            <Grid>
+                <toolkit:MediaElement x:Name="VideoPlayer"
+                              Source="{Binding VideoSource}"
+                              Aspect="AspectFit"
+                              IsLooping="True"
+                              ShouldAutoPlay="True"
+                              VerticalOptions="Fill"
+                              HorizontalOptions="Fill" />
+                <Label Text="Your video is ready!"
+                       IsVisible="False"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center"
+                       TextColor="Gray"
+                       FontSize="16" />
+            </Grid>
+        </Border>
+
+        <!-- Action Buttons -->
+        <HorizontalStackLayout Grid.Row="1"
+                                Spacing="15"
+                                HorizontalOptions="Center"
+                                Margin="0,10">
+            <Button Text="📤 Share"
+                    Command="{Binding ShareVideoCommand}"
+                    BackgroundColor="#4A90D9"
+                    TextColor="White"
+                    CornerRadius="12"
+                    Padding="20,12"
+                    FontSize="15" />
+            <Button Text="💾 Save"
+                    Command="{Binding SaveToGalleryCommand}"
+                    BackgroundColor="#4A90D9"
+                    TextColor="White"
+                    CornerRadius="12"
+                    Padding="20,12"
+                    FontSize="15" />
+        </HorizontalStackLayout>
+
+        <!-- Generate New -->
+        <Button Grid.Row="2"
+                Text="+ Generate New"
+                Command="{Binding GenerateNewCommand}"
+                BackgroundColor="Transparent"
+                TextColor="#4A90D9"
+                FontSize="16"
+                Margin="0,10,0,20" />
+    </Grid>
+</ContentPage>

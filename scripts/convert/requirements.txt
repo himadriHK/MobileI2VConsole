@@ -1,0 +1,24 @@
+# ──────────────────────────────────────────────
+# GPU (CUDA 12.6) acceleration
+# ──────────────────────────────────────────────
+# PyTorch with CUDA 12.6 support (required for GPU conversion):
+#   pip install torch>=2.7.0 torchvision>=0.22.0 --index-url https://download.pytorch.org/whl/cu126
+#
+# ONNX Runtime with CUDA 12.x GPU support (for GPU verification):
+#   pip install onnxruntime-gpu>=1.19.0
+#
+# ⚠️  Do NOT install both onnxruntime and onnxruntime-gpu — they conflict.
+#     Install onnxruntime (CPU) OR onnxruntime-gpu (GPU), not both.
+# ──────────────────────────────────────────────
+
+torch>=2.1.0                  # upgrade to >=2.7.0 with --index-url cu126 for GPU
+torchvision>=0.16.0           # upgrade to >=0.22.0 with --index-url cu126 for GPU
+onnx>=1.15.0
+onnxruntime>=1.18.0           # CPU-only; install onnxruntime-gpu>=1.19.0 instead for GPU
+transformers>=4.44.0          # Qwen2 support requires >= 4.44.0
+huggingface-hub>=0.20.0
+diffusers>=0.30.0             # required for AutoencoderKLLTXVideo, UNet2DConditionModel etc.
+numpy>=1.24.0
+Pillow>=10.0.0
+safetensors>=0.4.0
+opencv-python>=4.8.0

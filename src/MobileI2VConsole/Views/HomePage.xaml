@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MobileI2VConsole.ViewModels"
+             x:Class="MobileI2VConsole.Views.HomePage"
+             x:DataType="vm:HomeViewModel"
+             Title="MobileI2V"
+             BackgroundColor="{StaticResource PageBackgroundColor}">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="16" Padding="20">
+
+            <!-- Header -->
+            <Label Text="Image to Video"
+                   FontSize="28"
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"
+                   Margin="0,10,0,0" />
+            <Label Text="Transform your photos into animated videos"
+                   FontSize="14"
+                   HorizontalOptions="Center"
+                   TextColor="Gray"
+                   Margin="0,0,0,10" />
+
+            <!-- Image Preview Area -->
+            <Border StrokeShape="RoundRectangle 16"
+                    Stroke="Gray"
+                    StrokeThickness="1"
+                    HeightRequest="300"
+                    BackgroundColor="#2A2A2A">
+                <Grid>
+                    <Image Source="{Binding ImagePreview}"
+                           Aspect="AspectFit"
+                           IsVisible="{Binding ImagePreview, Converter={x:Null}}" />
+                    <Label Text="Tap to select an image"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"
+                           TextColor="Gray"
+                           FontSize="16"
+                           IsVisible="{Binding ImagePreview, Converter={x:Null}}" />
+                </Grid>
+            </Border>
+
+            <!-- Image Source Buttons -->
+            <HorizontalStackLayout Spacing="12" HorizontalOptions="Center">
+                <Button Text="📁 Gallery"
+                        Command="{Binding PickImageCommand}"
+                        BackgroundColor="#4A90D9"
+                        TextColor="White"
+                        CornerRadius="12"
+                        Padding="16,10" />
+                <Button Text="📷 Camera"
+                        Command="{Binding CaptureImageCommand}"
+                        BackgroundColor="#4A90D9"
+                        TextColor="White"
+                        CornerRadius="12"
+                        Padding="16,10" />
+            </HorizontalStackLayout>
+
+            <!-- Prompt Input -->
+            <Label Text="Prompt (optional)"
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   Margin="0,10,0,0" />
+            <Entry Text="{Binding PromptText}"
+                   Placeholder="Describe the motion (e.g., 'waves crashing')"
+                   BackgroundColor="#2A2A2A"
+                   TextColor="White"
+                   PlaceholderColor="Gray"
+                   FontSize="14" />
+
+            <!-- Prompt Templates -->
+            <Label Text="Quick Templates"
+                   FontSize="12"
+                   TextColor="Gray" />
+            <CollectionView ItemsSource="{Binding PromptTemplates}"
+                            HeightRequest="50"
+                            ItemsLayout="HorizontalList">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HomeViewModel">
+                        <Border StrokeShape="RoundRectangle 20"
+                                Stroke="#4A90D9"
+                                StrokeThickness="1"
+                                Padding="14,8"
+                                Margin="2"
+                                BackgroundColor="#1E3A5F">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, Path=ApplyTemplateCommand}"
+                                                      CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="{Binding Name}" FontSize="12" TextColor="White" />
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Model Status & Download -->
+            <Border StrokeShape="RoundRectangle 12"
+                    Stroke="#4A90D9"
+                    StrokeThickness="0.5"
+                    Padding="16"
+                    BackgroundColor="#1A1A2E"
+                    Margin="0,10,0,0">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="{Binding DownloadStatusText}"
+                           FontSize="13"
+                           TextColor="LightGray" />
+                    <ProgressBar Progress="{Binding DownloadProgress}"
+                                 ProgressColor="#4A90D9"
+                                 IsVisible="{Binding IsDownloading}"
+                                 HeightRequest="6" />
+                    <Button Text="Download Models"
+                            Command="{Binding DownloadModelsCommand}"
+                            IsVisible="{Binding IsModelDownloaded, Converter={x:Null}}"
+                            BackgroundColor="#E94560"
+                            TextColor="White"
+                            CornerRadius="8"
+                            HeightRequest="40"
+                            FontSize="13"
+                            IsEnabled="{Binding IsDownloading, Converter={x:Null}}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Generate Button -->
+            <Button Text="✨ Generate Video"
+                    Command="{Binding GenerateCommand}"
+                    BackgroundColor="#4A90D9"
+                    TextColor="White"
+                    FontSize="18"
+                    FontAttributes="Bold"
+                    CornerRadius="16"
+                    HeightRequest="56"
+                    Margin="0,10,0,20" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
