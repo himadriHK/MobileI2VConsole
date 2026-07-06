@@ -4,6 +4,7 @@ using MobileI2VConsole.Models;
 using MobileI2VConsole.Services;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using Microsoft.Maui.Storage;
 
 namespace MobileI2VConsole.ViewModels;
 
@@ -36,12 +37,17 @@ public partial class HomeViewModel : ObservableObject
 
     public ObservableCollection<PromptTemplate> PromptTemplates { get; } = new();
 
+    public bool IsDownloadNeeded => !IsModelDownloaded;
+
+    partial void OnIsModelDownloadedChanged(bool value) => OnPropertyChanged(nameof(IsDownloadNeeded));
+
     public HomeViewModel(IMediaPickerService mediaPicker, IFileService fileService, IModelManager modelManager)
     {
         _mediaPicker = mediaPicker;
         _fileService = fileService;
         _modelManager = modelManager;
         LoadPromptTemplates();
+        _ = CheckAndExtractModelsAsync();
     }
 
     partial void OnSelectedImagePathChanged(string? value)
@@ -56,10 +62,9 @@ public partial class HomeViewModel : ObservableObject
     {
         try
         {
-            var templatesPath = Path.Combine(FileSystem.AppDataDirectory, "..", "Resources", "Raw", "PromptTemplates.json");
             // Try loading from embedded resource
             var assembly = typeof(HomeViewModel).Assembly;
-            using var stream = assembly.GetManifestResourceStream("MobileI2VConsole.Resources.Raw.PromptTemplates.json");
+            using var stream = FileSystem.OpenAppPackageFileAsync("PromptTemplates.json").Result;
             if (stream != null)
             {
                 using var reader = new StreamReader(stream);
@@ -73,7 +78,7 @@ public partial class HomeViewModel : ObservableObject
                 }
             }
         }
-        catch
+        catch(Exception ex)
         {
             // Fallback defaults
             PromptTemplates.Add(new PromptTemplate { Name = "Gentle Motion", Prompt = "gentle motion, smooth and subtle movement", Icon = "🌊" });
@@ -120,7 +125,7 @@ public partial class HomeViewModel : ObservableObject
                 DownloadStatusText = $"Downloading {status.ModelName}... {status.DownloadProgress:P0}";
             });
 
-            var success = await _modelManager.DownloadModelsAsync(progress);
+            var success = true;// all models are bundled in assets, so no download is needed. //await _modelManager.DownloadModelsAsync(progress);
             if (success)
             {
                 IsModelDownloaded = true;
@@ -174,9 +179,37 @@ public partial class HomeViewModel : ObservableObject
     [RelayCommand]
     private async Task CheckModelStatusAsync()
     {
+        await CheckAndExtractModelsAsync();
+    }
+
+    private async Task CheckAndExtractModelsAsync()
+    {
         var statuses = _modelManager.GetAllStatus();
-        var allDownloaded = statuses.All(s => s.IsDownloaded);
-        IsModelDownloaded = allDownloaded;
-        DownloadStatusText = allDownloaded ? "All models ready" : $"Models need download ({statuses.Count(s => !s.IsDownloaded)} remaining)";
+        if (statuses.All(s => s.IsDownloaded))
+        {
+            IsModelDownloaded = true;
+            DownloadStatusText = "All models ready";
+            return;
+        }
+
+        // Try extracting bundled models from app package (Resources/Raw)
+        DownloadStatusText = "Extracting bundled models...";
+        try
+        {
+            var success = await _modelManager.DownloadModelsAsync(null);
+            if (success)
+            {
+                IsModelDownloaded = true;
+                DownloadStatusText = "All models ready";
+            }
+            else
+            {
+                DownloadStatusText = "Models need to be downloaded";
+            }
+        }
+        catch
+        {
+            DownloadStatusText = "Models need to be downloaded";
+        }
     }
 }

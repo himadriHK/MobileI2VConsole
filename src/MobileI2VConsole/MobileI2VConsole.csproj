@@ -17,6 +17,10 @@
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-android|AnyCPU'">
+    <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- App Icon -->
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appicon.svg" Color="#1A1A2E" />
@@ -32,6 +36,7 @@
 
     <!-- Raw Assets -->
     <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Resources\Raw\PromptTemplates.json" />
   </ItemGroup>
 
   <ItemGroup>

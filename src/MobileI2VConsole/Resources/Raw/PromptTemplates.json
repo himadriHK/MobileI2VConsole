@@ -1,32 +1,32 @@
 [
   {
-    "name": "Gentle Motion",
-    "prompt": "gentle motion, smooth and subtle movement, calm atmosphere",
-    "icon": "🌊"
+    "Name": "Gentle Motion",
+    "Prompt": "gentle motion, smooth and subtle movement, calm atmosphere",
+    "Icon": "🌊"
   },
   {
-    "name": "Cinematic Pan",
-    "prompt": "cinematic panning shot, slow camera movement, film-like quality",
-    "icon": "🎬"
+    "Name": "Cinematic Pan",
+    "Prompt": "cinematic panning shot, slow camera movement, film-like quality",
+    "Icon": "🎬"
   },
   {
-    "name": "Flowing",
-    "prompt": "flowing movement, dynamic and organic, natural motion",
-    "icon": "💫"
+    "Name": "Flowing",
+    "Prompt": "flowing movement, dynamic and organic, natural motion",
+    "Icon": "💫"
   },
   {
-    "name": "Dramatic Zoom",
-    "prompt": "dramatic zoom in, intense motion, cinematic impact",
-    "icon": "🎯"
+    "Name": "Dramatic Zoom",
+    "Prompt": "dramatic zoom in, intense motion, cinematic impact",
+    "Icon": "🎯"
   },
   {
-    "name": "Waves",
-    "prompt": "waves rippling and flowing, fluid motion, water-like movement",
-    "icon": "🌊"
+    "Name": "Waves",
+    "Prompt": "waves rippling and flowing, fluid motion, water-like movement",
+    "Icon": "🌊"
   },
   {
-    "name": "Breathe",
-    "prompt": "subtle breathing motion, gentle living movement, barely perceptible",
-    "icon": "🫧"
+    "Name": "Breathe",
+    "Prompt": "subtle breathing motion, gentle living movement, barely perceptible",
+    "Icon": "🫧"
   }
 ]

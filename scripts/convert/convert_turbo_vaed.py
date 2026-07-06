@@ -2,32 +2,42 @@
 """
 convert_turbo_vaed.py — Export Turbo-VAED Decoder to ONNX.
 
-Downloads the Turbo-VAED (mobile-optimized VAE decoder) checkpoint from
-HuggingFace and exports the decoder that converts latent frames back to
-RGB video frames.
+Downloads the config from GitHub (hustvl/Turbo-VAED/configs/) and the
+checkpoint from HuggingFace (hustvl/Turbo-VAED), then builds the decoder
+using the vendored turbo_vaed_model.py and exports to ONNX.
 
-Input:   [17, 4, H/8, W/8]  float32 — latent frames (17 = output frame count)
-Output:  [17, 3, H, W]      float32 — decoded RGB frames (values in [-1, 1])
+The Turbo-VAED is a decoder-only video VAE that converts latent video frames
+back to RGB frames.  It is *not* a diffusers AutoencoderKL — the vendored
+model code is required.
 
-When H=720, W=1280, the latent shape is [17, 4, 90, 160].
+Input:   [B, latent_channels, T, H, W]  float32 — latent video tensor
+Output:  [B, 3, T*8, H*32, W*32]        float32 — decoded RGB frames
+
+Variants (latent_channels — default LTX):
+  - LTX:          latent_channels=128, patch_size=4  (smallest, MobileI2V-relevant)
+  - CogVideo5B:   latent_channels=16,  patch_size=1
+  - HunyuanVideo: latent_channels=16,  patch_size=1
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+import urllib.request
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 
-# Ensure the parent of common/ is on sys.path so the common package is importable
+# Ensure the parent of common/ is on sys.path so packages are importable
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-from common.model_utils import MODEL_CACHE_DIR, get_device, get_torch_dtype, download_repo, export_onnx, verify_onnx
+from common.model_utils import MODEL_CACHE_DIR, get_device, get_torch_dtype, export_onnx, verify_onnx
+from models.turbo_vaed_model import build_turbo_vaed_decoder
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +45,37 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-VAED_REPO_ID = "hustvl/MobileI2V"            # shared repo with UNet
-VAED_SUBFOLDER = "vae_decoder"               # optional subfolder
+VAED_HF_REPO = "hustvl/Turbo-VAED"
+VAED_CONFIG_BASE = "https://raw.githubusercontent.com/hustvl/Turbo-VAED/main/configs"
 MODEL_NAME = "turbo_vaed"
-NUM_FRAMES = 17
-LATENT_CHANNELS = 4
-RGB_CHANNELS = 3
-DEFAULT_H = 90    # 720 / 8
-DEFAULT_W = 160   # 1280 / 8
+
+VARIANTS = {
+    "LTX": {
+        "config_file": "Turbo-VAED-LTX.json",
+        "checkpoint_file": "Turbo-VAED-LTX.pth",
+        "latent_channels": 128,
+        "dummy_t": 5,
+        "dummy_h": 23,
+        "dummy_w": 40,
+    },
+    "CogVideo5B": {
+        "config_file": "Turbo-VAED-CogVideo5B.json",
+        "checkpoint_file": "Turbo-VAED-CogVideo5B.pth",
+        "latent_channels": 16,
+        "dummy_t": 5,
+        "dummy_h": 23,
+        "dummy_w": 40,
+    },
+    "HunyuanVideo": {
+        "config_file": "Turbo-VAED-HunyuanVideo.json",
+        "checkpoint_file": "Turbo-VAED-HunyuanVideo.pth",
+        "latent_channels": 16,
+        "dummy_t": 5,
+        "dummy_h": 23,
+        "dummy_w": 40,
+    },
+}
+DEFAULT_VARIANT = "LTX"
 
 
 # ---------------------------------------------------------------------------
@@ -52,8 +85,8 @@ DEFAULT_W = 160   # 1280 / 8
 class TurboVAEDWrapper(torch.nn.Module):
     """Wraps the Turbo-VAED decoder for standalone ONNX export.
 
-    The decoder takes a batch of latent video frames and produces RGB frames.
-    It is an independent decoder (not tied to the VAE encoder).
+    The decoder itself is a TurboVAEDDecoder3d — this wrapper simply exposes
+    ``.forward(latent) -> frames`` for clean ONNX graph naming.
     """
 
     def __init__(self, decoder: torch.nn.Module) -> None:
@@ -72,51 +105,128 @@ def convert_turbo_vaed(
     output_dir: Path,
     *,
     device: torch.device,
-    height: int = DEFAULT_H,
-    width: int = DEFAULT_W,
+    variant: str = DEFAULT_VARIANT,
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+    num_frames: Optional[int] = None,
     verbose: bool = False,
 ) -> Path:
-    """Download the Turbo-VAED decoder and export to ONNX.
+    """Download Turbo-VAED config + checkpoint and export decoder to ONNX.
 
     Args:
         output_dir: Directory to write ``turbo_vaed.onnx`` into.
         device:     Target device (cuda or cpu).
-        height:     Latent height  (default 90 = 720 / 8).
-        width:      Latent width   (default 160 = 1280 / 8).
+        variant:    Model variant (LTX, CogVideo5B, HunyuanVideo).
+        height:     Latent spatial height (default from variant, e.g. 23 for LTX).
+        width:      Latent spatial width  (default from variant, e.g. 40 for LTX).
+        num_frames: Number of latent frames for dummy input (default from variant, e.g. 5).
         verbose:    Print ONNX export progress.
 
     Returns:
         Path to the exported ``.onnx`` file.
     """
-    logger.info("=== Turbo-VAED Decoder Conversion ===")
-    logger.info("Downloading Turbo-VAED from %s ...", VAED_REPO_ID)
+    logger.info("=== Turbo-VAED Decoder Conversion (%s) ===", variant)
+
+    if variant not in VARIANTS:
+        raise ValueError(f"Unknown variant '{variant}'. Options: {list(VARIANTS.keys())}")
+
+    vinfo = VARIANTS[variant]
+    config_file = vinfo["config_file"]
+    checkpoint_file = vinfo["checkpoint_file"]
+    latent_channels = vinfo["latent_channels"]
+
+    dummy_t = num_frames or vinfo["dummy_t"]
+    dummy_h = height or vinfo["dummy_h"]
+    dummy_w = width or vinfo["dummy_w"]
+
     torch_dtype = get_torch_dtype(device)
 
-    model_dir = download_repo(
-        VAED_REPO_ID,
-        allow_patterns=["vae_decoder/*", "vae/*", "*.json"],
-        local_dir=MODEL_CACHE_DIR,
+    # ------------------------------------------------------------------
+    # Step 1: Download config from GitHub
+    # ------------------------------------------------------------------
+    config_url = f"{VAED_CONFIG_BASE}/{config_file}"
+    logger.info("Downloading config from %s ...", config_url)
+    with urllib.request.urlopen(config_url) as resp:
+        config = json.loads(resp.read().decode())
+    logger.info("Config loaded: %d top-level keys", len(config))
+
+    # Verify latent_channels consistency
+    config_latent = config.get("latent_channels", None)
+    if config_latent is not None and config_latent != latent_channels:
+        logger.warning(
+            "Config latent_channels=%d differs from variant default %d. "
+            "Using config value.",
+            config_latent, latent_channels,
+        )
+        latent_channels = config_latent
+
+    # ------------------------------------------------------------------
+    # Step 2: Download checkpoint from HuggingFace
+    # ------------------------------------------------------------------
+    from huggingface_hub import hf_hub_download
+
+    local_cache = MODEL_CACHE_DIR / "turbo_vaed"
+    local_cache.mkdir(parents=True, exist_ok=True)
+
+    ckpt_path = hf_hub_download(
+        repo_id=VAED_HF_REPO,
+        filename=checkpoint_file,
+        local_dir=local_cache,
+        resume_download=True,
     )
+    logger.info("Checkpoint: %s", ckpt_path)
 
     # ------------------------------------------------------------------
-    # Attempt to load the VAE decoder
+    # Step 3: Build decoder from config
     # ------------------------------------------------------------------
-    decoder = _load_decoder(model_dir, device, torch_dtype)
-
-    decoder.to(device)
-    decoder.eval()
+    logger.info("Building Turbo-VAED decoder from config ...")
+    decoder = build_turbo_vaed_decoder(config)
     logger.info(
-        "Decoder loaded (%.2fM params)",
+        "Decoder built: %.2fM params (unloaded)",
         sum(p.numel() for p in decoder.parameters()) / 1e6,
     )
 
-    # Wrap
-    wrapper = TurboVAEDWrapper(decoder).to(device)
+    # ------------------------------------------------------------------
+    # Step 4: Load state dict (strip "decoder." prefix)
+    # ------------------------------------------------------------------
+    logger.info("Loading checkpoint ...")
+    state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+
+    # The full model state dict has keys like "decoder.conv_in.conv.weight".
+    # Our standalone decoder expects "conv_in.conv.weight".  Strip the prefix.
+    decoder_keys: Dict[str, torch.Tensor] = {}
+    for k, v in state_dict.items():
+        if k.startswith("decoder."):
+            decoder_keys[k[len("decoder."):]] = v
+
+    if not decoder_keys:
+        logger.warning(
+            "No keys with 'decoder.' prefix found — trying raw state dict"
+        )
+        decoder_keys = state_dict
+
+    missing, unexpected = decoder.load_state_dict(decoder_keys, strict=False)
+    if missing:
+        logger.warning("Missing keys (%d): %s", len(missing), missing[:8])
+    if unexpected:
+        logger.info("Unexpected keys (expected — encoder/non-decoder): %d", len(unexpected))
+
+    decoder.to(device, dtype=torch_dtype)
+    decoder.eval()
+    logger.info(
+        "Decoder loaded on %s (%.2fM params)",
+        device, sum(p.numel() for p in decoder.parameters()) / 1e6,
+    )
+
+    # ------------------------------------------------------------------
+    # Step 5: Wrap and export
+    # ------------------------------------------------------------------
+    wrapper = TurboVAEDWrapper(decoder).to(device, dtype=torch_dtype)
     wrapper.eval()
 
-    # Build dummy input: [17, 4, H/8, W/8]
+    # Build dummy input: [B, C, T, H, W]
     dummy_latent = torch.randn(
-        NUM_FRAMES, LATENT_CHANNELS, height, width,
+        1, latent_channels, dummy_t, dummy_h, dummy_w,
         dtype=torch_dtype, device=device,
     )
 
@@ -125,11 +235,15 @@ def convert_turbo_vaed(
     output_names = ["frames"]
 
     dynamic_axes: Dict[str, Dict[int, str]] = {
-        "latent": {0: "num_frames", 2: "height", 3: "width"},
-        "frames": {0: "num_frames", 2: "height", 3: "width"},
+        "latent": {0: "batch", 2: "num_frames", 3: "height", 4: "width"},
+        "frames": {0: "batch", 2: "num_frames", 3: "height", 4: "width"},
     }
 
-    # Export
+    logger.info(
+        "Dummy input shape: %s (B=%d, C=%d, T=%d, H=%d, W=%d)",
+        list(dummy_latent.shape), *dummy_latent.shape,
+    )
+
     onnx_path = export_onnx(
         model=wrapper,
         model_name=MODEL_NAME,
@@ -141,134 +255,57 @@ def convert_turbo_vaed(
         verbose=verbose,
     )
 
-    # Verification
+    # ------------------------------------------------------------------
+    # Step 6: Verify
+    # ------------------------------------------------------------------
     feeds = {"latent": dummy_latent.cpu().numpy()}
-    verify_onnx(onnx_path, feeds=feeds, expected_output_names=output_names, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    verify_onnx(
+        onnx_path,
+        feeds=feeds,
+        expected_output_names=output_names,
+        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
 
     return onnx_path
 
 
-def _load_decoder(model_dir: Path, device: torch.device, torch_dtype: torch.dtype) -> torch.nn.Module:
-    """Internal: try multiple strategies to load the VAE decoder."""
-
-    # Strategy 1: diffusers AutoencoderKL (subfolder)
-    try:
-        from diffusers import AutoencoderKL
-
-        if (model_dir / "vae_decoder" / "config.json").exists():
-            logger.info("Loading decoder via diffusers AutoencoderKL (subfolder=vae_decoder)")
-            return AutoencoderKL.from_pretrained(
-                str(model_dir),
-                subfolder="vae_decoder",
-                torch_dtype=torch_dtype,
-            )
-        elif (model_dir / "vae" / "config.json").exists():
-            logger.info("Loading decoder via diffusers AutoencoderKL (subfolder=vae)")
-            return AutoencoderKL.from_pretrained(
-                str(model_dir),
-                subfolder="vae",
-                torch_dtype=torch_dtype,
-            )
-    except (ImportError, OSError, ValueError) as exc:
-        logger.warning("Diffusers AutoencoderKL load failed: %s", exc)
-
-    # Strategy 2: try loading from the main directory (standalone)
-    try:
-        from diffusers import AutoencoderKL
-
-        # Check if config indicates a VAE
-        config_paths = [
-            model_dir / "vae_decoder" / "config.json",
-            model_dir / "vae" / "config.json",
-            model_dir / "config.json",
-        ]
-        for cp in config_paths:
-            if cp.exists():
-                import json
-                with open(cp) as f:
-                    cfg = json.load(f)
-                class_name = cfg.get("_class_name", "")
-                if "AutoencoderKL" in class_name or "VQModel" in class_name:
-                    logger.info("Loading decoder from config at %s", cp)
-                    return AutoencoderKL.from_config(cfg)
-    except Exception as exc:
-        logger.warning("Decoder config load failed: %s", exc)
-
-    # Strategy 3: load from safetensors directly
-    safetensors_files = []
-    for sub in ["vae_decoder", "vae", "."]:
-        candidates = list((model_dir / sub).glob("*.safetensors")) if sub != "." else list(model_dir.glob("*.safetensors"))
-        safetensors_files.extend(candidates)
-
-    if safetensors_files:
-        logger.info("Found safetensors files — loading decoder state dict ...")
-        from safetensors.torch import load_file
-        state_dict = {}
-        for sf in safetensors_files:
-            state_dict.update(load_file(str(sf)))
-
-        # Try instantiating a minimal decoder module
-        # Fall back to a generic nn.Module that applies 3x upscaling conv layers
-        decoder = _build_fallback_decoder(LATENT_CHANNELS)
-        try:
-            decoder.load_state_dict(state_dict, strict=False)
-            logger.info("Fallback decoder loaded with %d/%d params",
-                        sum(p.numel() for p in decoder.parameters()),
-                        sum(p.numel() for p in decoder.parameters()))
-        except Exception as exc:
-            logger.warning("Could not load state dict into fallback decoder: %s", exc)
-        return decoder
-
-    # Last resort: build a simple decoder for testing
-    logger.warning(
-        "No pretrained VAE decoder found. Building a fallback decoder. "
-        "Replace with actual Turbo-VAED weights for production use."
-    )
-    decoder = _build_fallback_decoder(LATENT_CHANNELS)
-    return decoder
-
-
-def _build_fallback_decoder(in_channels: int) -> torch.nn.Module:
-    """Build a simple 3-layer upscaling decoder as fallback.
-
-    This is NOT the real Turbo-VAED — it exists so the conversion pipeline
-    can complete for testing.  Replace with actual weights before deployment.
-    """
-    class SimpleDecoder(torch.nn.Module):
-        def __init__(self, in_ch: int) -> None:
-            super().__init__()
-            self.net = torch.nn.Sequential(
-                torch.nn.Conv2d(in_ch, 64, kernel_size=3, padding=1),
-                torch.nn.SiLU(),
-                torch.nn.Upsample(scale_factor=2, mode="nearest"),
-                torch.nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                torch.nn.SiLU(),
-                torch.nn.Upsample(scale_factor=2, mode="nearest"),
-                torch.nn.Conv2d(64, 32, kernel_size=3, padding=1),
-                torch.nn.SiLU(),
-                torch.nn.Upsample(scale_factor=2, mode="nearest"),
-                torch.nn.Conv2d(32, 3, kernel_size=3, padding=1),
-                torch.nn.Tanh(),
-            )
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            return self.net(x)
-
-    return SimpleDecoder(in_channels)
-
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert Turbo-VAED Decoder to ONNX")
-    parser.add_argument("--output", "-o", type=Path, default=Path("./models"),
-                        help="Output directory (default: ./models)")
-    parser.add_argument("--height", type=int, default=DEFAULT_H,
-                        help="Latent height (default: 90)")
-    parser.add_argument("--width", type=int, default=DEFAULT_W,
-                        help="Latent width (default: 160)")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Print export progress")
-    parser.add_argument("--device", type=str, default=None,
-                        help="Override device (cuda / cpu)")
+    parser = argparse.ArgumentParser(
+        description="Convert Turbo-VAED Decoder to ONNX",
+    )
+    parser.add_argument(
+        "--output", "-o", type=Path, default=Path("./models"),
+        help="Output directory (default: ./models)",
+    )
+    parser.add_argument(
+        "--variant", type=str, default=DEFAULT_VARIANT,
+        choices=list(VARIANTS.keys()),
+        help=f"Model variant (default: {DEFAULT_VARIANT})",
+    )
+    parser.add_argument(
+        "--height", type=int, default=None,
+        help="Latent height for dummy input (default: variant default)",
+    )
+    parser.add_argument(
+        "--width", type=int, default=None,
+        help="Latent width for dummy input (default: variant default)",
+    )
+    parser.add_argument(
+        "--num-frames", type=int, default=None,
+        help="Number of latent frames for dummy input (default: variant default)",
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true",
+        help="Print export progress",
+    )
+    parser.add_argument(
+        "--device", type=str, default=None,
+        help="Override device (cuda / cpu)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -281,8 +318,10 @@ def main() -> None:
     convert_turbo_vaed(
         output_dir=args.output,
         device=device,
+        variant=args.variant,
         height=args.height,
         width=args.width,
+        num_frames=args.num_frames,
         verbose=args.verbose,
     )
 

@@ -1,0 +1,7 @@
+{"id":"D-01","type":"architecture","decision":"Android only, min API 26","timestamp":"2026-07-01T10:40:00Z","reasoning":"MobileI2V target platform"}
+{"id":"D-02","type":"architecture","decision":"Models downloaded from HuggingFace on first launch","timestamp":"2026-07-01T10:40:00Z","reasoning":"Keeps APK size small"}
+{"id":"D-03","type":"architecture","decision":"Python ONNX conversion scripts in scripts/convert/","timestamp":"2026-07-01T10:40:00Z","reasoning":"Separate from app code"}
+{"id":"D-04","type":"bugfix","decision":"Use stable torch.onnx.export() not dynamo_export","timestamp":"2026-07-02T04:00:00Z","reasoning":"ExportOptions/dynamo_export API doesn't exist in installed PyTorch"}
+{"id":"D-05","type":"bugfix","decision":"Convert SymInt to int() before dict key lookup","timestamp":"2026-07-02T04:08:00Z","reasoning":"SymInt is deliberately unhashable in PyTorch 2.12"}
+{"id":"D-06","type":"bugfix","decision":"Replace while-loops with static math for ONNX","timestamp":"2026-07-02T04:00:00Z","reasoning":"ONNX standard export doesn't support dynamic control flow"}
+{"id":"D-07","type":"discovery","decision":"MobileI2V UNet is text-blind (no cross-attention)","timestamp":"2026-07-02T04:50:00Z","reasoning":"SanaBlock_cross and SanaBlock_vanila accept text_emb but never use it; MultiHeadCrossAttention is never instantiated"}

@@ -1,3 +1,4 @@
+using Microsoft.ML.OnnxRuntime;
 using MobileI2VConsole.Models;
 
 namespace MobileI2VConsole.Services;
@@ -24,11 +25,14 @@ public interface IModelManager
     bool IsModelLoaded(string modelName);
 
     /// <summary>Gets the file path to a downloaded model.</summary>
-    string GetModelPath(string modelName);
+    Task<string> GetModelPathAsync(string modelName);
 
     /// <summary>Returns status for all models.</summary>
     IReadOnlyList<ModelStatus> GetAllStatus();
 
     /// <summary>Deletes all cached model files.</summary>
     Task ClearCacheAsync();
+
+    /// <summary>Gets a loaded ONNX inference session for the specified model.</summary>
+    bool TryGetSession(string modelName, out InferenceSession session);
 }

@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-07-02T12:37:51.580Z",
+  "entries": [
+    {
+      "id": "F-1",
+      "type": "bug_fix",
+      "description": "TurboVAEDDecoder3d __init__ raises IndexError because inject_noise tuple default has 4 elements but needs 5 (accessed at indices 0..4 for mid block + 4 up blocks)",
+      "affected_paths": [
+        "scripts/convert/models/turbo_vaed_model.py",
+        "scripts/convert/tests/test_turbo_vaed_bug.py"
+      ],
+      "root_cause": "inject_noise default tuple had 4 elements (matching len(block_out_channels)) but needs len(block_out_channels)+1 = 5 because inject_noise[0] is used for mid block and inject_noise[i+1] for each up block",
+      "fix_applied": "Changed inject_noise default from (False,False,False,False) to (False,False,False,False,False) in both the constructor signature (line 585) and the factory setdefault (line 783)",
+      "tags": [
+        "turbo-vaed",
+        "onnx-export",
+        "index-error",
+        "tuple-length"
+      ],
+      "timestamp": "2026-07-02T05:09:53.108Z",
+      "recurrence_count": 1
+    },
+    {
+      "id": "F-2",
+      "type": "bug_fix",
+      "description": "Models and prompt templates not loaded at startup in HomeViewModel.cs",
+      "affected_paths": [
+        "src/MobileI2VConsole/ViewModels/HomeViewModel.cs",
+        "src/MobileI2VConsole/MobileI2VConsole.csproj"
+      ],
+      "root_cause": "Bug 1: PromptTemplates.json was defined as a MauiAsset (not EmbeddedResource) in the .csproj, so GetManifestResourceStream returned null silently, and the catch fallback never fired. Bug 2: Constructor never called CheckModelStatusAsync(), so IsModelDownloaded stayed false at startup.",
+      "fix_applied": "Added <EmbeddedResource> for PromptTemplates.json in .csproj; removed dead templatesPath variable; extracted CheckModelStatusAtStartup() and called it from constructor; refactored CheckModelStatusAsync() to delegate to the shared method.",
+      "tags": [
+        "home-view-model",
+        "startup",
+        "embedded-resource",
+        "model-status",
+        "prompt-templates"
+      ],
+      "timestamp": "2026-07-02T12:37:51.580Z",
+      "recurrence_count": 1
+    }
+  ]
+}

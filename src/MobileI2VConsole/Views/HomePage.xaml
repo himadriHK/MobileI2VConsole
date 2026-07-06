@@ -111,7 +111,7 @@
                                  HeightRequest="6" />
                     <Button Text="Download Models"
                             Command="{Binding DownloadModelsCommand}"
-                            IsVisible="{Binding IsModelDownloaded, Converter={x:Null}}"
+                            IsVisible="{Binding IsDownloadNeeded}"
                             BackgroundColor="#E94560"
                             TextColor="White"
                             CornerRadius="8"

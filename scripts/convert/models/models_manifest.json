@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-07-04T19:24:29Z",
+  "models": {
+    "vae_encoder": {
+      "format": "onnx",
+      "path": "models\\vae_encoder.onnx",
+      "size_bytes": 721865762,
+      "sha256": "114ce42521a24f7f188062ea6a1094fa2ccf31581c706019fe905b54f83d7a6d"
+    },
+    "qwen2_encoder": {
+      "format": "onnx",
+      "path": "models\\qwen2_encoder.onnx",
+      "size_bytes": 1977091798,
+      "sha256": "548b003e0b5eff8f5f2bfef0f020b91664f0a852505cce36a946b43f79c512c2"
+    },
+    "mobilei2v_unet": {
+      "format": "onnx",
+      "path": "models\\mobilei2v_unet.onnx",
+      "size_bytes": 1138902583,
+      "sha256": "cf4f2edfbe4388dd87fefcb80dfb2117d88f48d7f807fc88291bbd51a4f931d4"
+    },
+    "turbo_vaed": {
+      "format": "onnx",
+      "path": "models\\turbo_vaed.onnx",
+      "size_bytes": 167881867,
+      "sha256": "1a78cc13706e21bed363e9e03a17b11135badc8287690a8b719944ca3c77aaea"
+    }
+  }
+}

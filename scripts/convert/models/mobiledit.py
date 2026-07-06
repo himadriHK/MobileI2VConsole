@@ -111,15 +111,19 @@ class PositionGetter3D(object):
         self.cache_positions = {}
 
     def __call__(self, b, t, h, w, device):
-        key = (b, t, h, w, device)
+        # Convert to plain ints — SymInt is unhashable during torch.export tracing
+        b_int, t_int, h_int, w_int = int(b), int(t), int(h), int(w)
+        key = (b_int, t_int, h_int, w_int, str(device))
         if key not in self.cache_positions:
-            x = torch.arange(w, device=device)
-            y = torch.arange(h, device=device)
-            z = torch.arange(t, device=device)
-            pos = torch.cartesian_prod(z, y, x)
-            pos = pos.reshape(t * h * w, 3).transpose(0, 1).reshape(3, 1, -1).contiguous().expand(3, b, -1).clone()
+            x = torch.arange(w_int, device=device)
+            y = torch.arange(h_int, device=device)
+            z = torch.arange(t_int, device=device)
+            Z, Y, X = torch.meshgrid(z, y, x, indexing='ij')
+            pos = torch.stack([Z, Y, X], dim=0).reshape(3, -1).reshape(3, 1, -1).expand(3, b_int, -1).clone()
             poses = (pos[0].contiguous(), pos[1].contiguous(), pos[2].contiguous())
-            max_poses = (int(poses[0].max()), int(poses[1].max()), int(poses[2].max()))
+            # Compute max_poses from plain ints (not from tensor.max()) to avoid
+            # GuardOnDataDependentSymNode errors during torch.export tracing.
+            max_poses = (t_int - 1, h_int - 1, w_int - 1)
             self.cache_positions[key] = (poses, max_poses)
         return self.cache_positions[key]
 
@@ -135,10 +139,12 @@ class RoPE3D(nn.Module):
         self.cache = {}
 
     def get_cos_sin(self, D, seq_len, device, dtype, interpolation_scale=1):
-        key = (D, seq_len, device, dtype, interpolation_scale)
+        # Convert to plain ints — SymInt is unhashable during torch.export tracing
+        D_int, seq_len_int = int(D), int(seq_len)
+        key = (D_int, seq_len_int, str(device), str(dtype), interpolation_scale)
         if key not in self.cache:
-            inv_freq = 1.0 / (self.base ** (torch.arange(0, D, 2).float().to(device) / D))
-            t = torch.arange(seq_len, device=device, dtype=inv_freq.dtype) / interpolation_scale
+            inv_freq = 1.0 / (self.base ** (torch.arange(0, D_int, 2).float().to(device) / D_int))
+            t = torch.arange(seq_len_int, device=device, dtype=inv_freq.dtype) / interpolation_scale
             freqs = torch.einsum("i,j->ij", t, inv_freq).to(dtype)
             freqs = torch.cat((freqs, freqs), dim=-1)
             cos = freqs.cos()
@@ -497,13 +503,8 @@ class Attention(nn.Module):
         """Compute RoPE positions from token count and temporal factor."""
         B, H, N, D = q.shape
         S = N // T
-        # Estimate H_spatial, W_spatial from spatial token count
-        h_spatial = int(S ** 0.5)
-        w_spatial = S // h_spatial
-        while h_spatial * w_spatial < S:
-            w_spatial += 1
-        while h_spatial * w_spatial > S:
-            w_spatial -= 1
+        h_spatial = int(math.isqrt(S))
+        w_spatial = (S + h_spatial - 1) // h_spatial
         pos_thw = self.position_getter(B, t=T, h=h_spatial, w=w_spatial, device=q.device)
         return pos_thw
 
@@ -574,12 +575,8 @@ class LiteLA(nn.Module):
         """Compute RoPE positions from tensor shape and temporal factor."""
         B, h, N, D = q.shape
         S = N // T
-        h_spatial = int(S ** 0.5)
-        w_spatial = S // h_spatial
-        while h_spatial * w_spatial < S:
-            w_spatial += 1
-        while h_spatial * w_spatial > S:
-            w_spatial -= 1
+        h_spatial = int(math.isqrt(S))
+        w_spatial = (S + h_spatial - 1) // h_spatial
         pos_thw = self.position_getter(B, t=T, h=h_spatial, w=w_spatial, device=q.device)
         return pos_thw
 
@@ -1398,6 +1395,12 @@ class MobileditONNXWrapper(nn.Module):
 
     Exposes a clean forward(latent, text_emb, timestep) interface.
     guide_image and flow_score are injected as constants.
+
+    NOTE: text_emb is passed to the model's transformer blocks but
+    neither SanaBlock_cross nor SanaBlock_vanila use the y argument
+    in their forward — they only do self-attention + MLP.
+    As a result, the JIT tracer prunes text_emb from the exported
+    ONNX graph (only latent and timestep remain as inputs).
     """
 
     def __init__(self, model):
@@ -1408,7 +1411,8 @@ class MobileditONNXWrapper(nn.Module):
         """
         Args:
             latent: (B, C, T, H, W) latent video tensor
-            text_emb: (B, 1, L, C) text embeddings
+            text_emb: (B, 1, L, C) text embeddings — UNUSED by blocks,
+                pruned from ONNX graph by JIT tracer.
             timestep: (B,) or (B, 1) diffusion timestep
         Returns:
             (B, C_out, T, H, W) predicted denoised latent

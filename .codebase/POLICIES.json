@@ -1,0 +1,22 @@
+{
+  "policies": [
+    {
+      "id": "pol-001",
+      "name": "onnx-verify-required",
+      "trigger": "when converting a model to ONNX format",
+      "rule": "Always run verify_onnx() after export. Never mark an ONNX conversion task complete with --skip-verify. If verification OOMs on available hardware, run onnx.checker.check_model() as a minimum structural check and document the limitation.",
+      "source": "learned",
+      "failure_count": 1,
+      "active": true
+    },
+    {
+      "id": "pol-002",
+      "name": "model-input-audit",
+      "trigger": "before ONNX export",
+      "rule": "Audit which forward() parameters the model actually uses. Check that all declared inputs are consumed within the model's forward pass. If PyTorch tracing eliminates an input, the model may not support the expected feature (e.g., text conditioning in a supposedly text-conditioned model).",
+      "source": "learned",
+      "failure_count": 1,
+      "active": true
+    }
+  ]
+}

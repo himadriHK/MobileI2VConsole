@@ -85,8 +85,9 @@ public partial class GenerationViewModel : ObservableObject
                     ProgressText = $"{p.OverallProgress:P0}";
             });
 
-            // Run inference pipeline
-            var rawFrames = await _orchestrator.GenerateVideoAsync(genRequest, progress, _cts.Token);
+            // Run inference pipeline (background thread to keep UI responsive)
+            var rawFrames = await Task.Run(
+                () => _orchestrator.GenerateVideoAsync(genRequest, progress, _cts.Token), _cts.Token);
 
             // Encode video
             StepName = "Encoding video";

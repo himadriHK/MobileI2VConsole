@@ -12,12 +12,26 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import onnx
 import onnxruntime as ort
 import torch
+
+# Ensure UTF-8 encoding for stdout/stderr — PyTorch ONNX exporter uses emoji
+# characters (❌ etc.) in verbose output, which crash on Windows cp1252 console.
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +51,8 @@ def get_device() -> torch.device:
 
 
 def get_torch_dtype(device: torch.device) -> torch.dtype:
-    """Return float16 on CUDA (memory efficiency), float32 on CPU."""
-    return torch.float16 if device.type == "cuda" else torch.float32
+    """Always return float32 — ONNX export requires float32 for correct inference."""
+    return torch.float32
 
 
 def enable_cuda_optimizations(device: torch.device) -> None:
@@ -139,6 +153,43 @@ def download_repo(
     return output_dir
 
 
+def _torch_version_tuple() -> tuple:
+    """Return PyTorch version as (major, minor) tuple, stripping local suffix."""
+    parts = torch.__version__.split("+")[0].split(".")[:2]
+    return tuple(int(x) for x in parts)
+
+
+def _dynamic_axes_to_shapes(
+    dynamic_axes: Optional[Dict[str, Dict[int, str]]],
+    input_names: List[str],
+) -> Optional[Dict[str, Dict[int, Any]]]:
+    """Convert legacy ``dynamic_axes`` to ``dynamic_shapes`` for PyTorch >= 2.12.
+
+    PyTorch 2.12+ uses ``torch.export.export`` under the hood for
+    ``torch.onnx.export``, which requires ``dynamic_shapes`` (``Dim`` objects)
+    instead of the legacy ``dynamic_axes`` dict.  This function converts
+    transparently so callers don't need to change their ``dynamic_axes`` dict.
+
+    Only input names are included — output dynamic shapes are inferred from
+    input dynamic shapes in the ``dynamic_shapes`` API.
+    """
+    from torch.export import Dim
+
+    if not dynamic_axes:
+        return None
+
+    dynamic_shapes: Dict[str, Dict[int, Any]] = {}
+    for name, axes in dynamic_axes.items():
+        if name not in input_names:
+            continue  # only inputs, outputs are inferred
+        dims: Dict[int, Any] = {}
+        for dim_idx, dim_name in axes.items():
+            dims[dim_idx] = Dim(dim_name)
+        dynamic_shapes[name] = dims
+
+    return dynamic_shapes if dynamic_shapes else None
+
+
 def _patch_neg_transpose(onnx_model: onnx.ModelProto) -> bool:
     """Fix Transpose nodes with ``-1`` in their ``perm`` attribute.
 
@@ -156,34 +207,16 @@ def _patch_neg_transpose(onnx_model: onnx.ModelProto) -> bool:
         for attr in node.attribute:
             if attr.name != "perm" or attr.type != onnx.AttributeProto.INTS:
                 continue
-        perms = list(attr.ints)
-        if -1 not in perms:
-            continue
-        rank = len(perms)
-        new_perms = [rank - 1 if p == -1 else p for p in perms]
-        del attr.ints[:]
-        attr.ints.extend(new_perms)
-        fixed = True
+            perms = list(attr.ints)
+            if -1 not in perms:
+                continue
+            rank = len(perms)
+            new_perms = [rank - 1 if p == -1 else p for p in perms]
+            del attr.ints[:]
+            attr.ints.extend(new_perms)
+            fixed = True
     return fixed
 
-
-def _dynamic_axes_to_shapes(dynamic_axes: Dict[str, Dict[int, str]]) -> Optional[Dict[str, Dict[int, "Dim"]]]:
-    """Convert legacy *dynamic_axes* format to *dynamic_shapes* format for dynamo export.
-
-    ``dynamic_axes`` format:   ``{"name": {0: "batch", 2: "height"}}``
-    ``dynamic_shapes`` format: ``{"name": {0: Dim("batch"), 2: Dim("height")}}``
-
-    Returns ``None`` if ``torch.export.Dim`` is not available (older PyTorch),
-    in which case the caller should fall back to the legacy export path.
-    """
-    try:
-        from torch.export import Dim
-    except ImportError:
-        return None
-    return {
-        name: {idx: Dim(label) for idx, label in axes.items()}
-        for name, axes in dynamic_axes.items()
-    }
 
 
 def export_onnx(
@@ -198,10 +231,9 @@ def export_onnx(
 ) -> Path:
     """Export a PyTorch model to ONNX and verify the result.
 
-    Uses an automatic fallback chain:
-      1. **dynamo-native** path with ``dynamic_shapes`` (handles negative permute correctly).
-      2. **legacy** path with ``dynamic_axes`` + ``dynamo=False`` (fallback if dynamo fails).
-      3. **Transpose perm repair** — any ``-1`` in Transpose attributes is fixed after export.
+    Uses ``torch.onnx.export`` (stable legacy API) with ``dynamic_axes`` for
+    variable batch / spatial dimensions, then applies a Transpose-perm repair
+    for any ``-1`` permute indices emitted by PyTorch.
 
     Args:
         model:        PyTorch model (already in eval mode).
@@ -225,69 +257,45 @@ def export_onnx(
     # Build args from dummy_inputs dict in the correct order
     args = tuple(dummy_inputs[name] for name in input_names)
 
-    dynamic_shapes = _dynamic_axes_to_shapes(dynamic_axes)
+    # PyTorch 2.12+ changes the ONNX exporter default to ``dynamo=True``
+    # which uses ``torch.export.export`` (dynamo tracing).  This chokes on
+    # RoPE buffers (lifted tensors) and also converts ``dynamic_axes`` to
+    # ``dynamic_shapes`` internally, causing shape-conflict errors when
+    # traced shapes differ from user hints.
+    #
+    # Fix: set ``dynamo=False`` to use the legacy JIT-based ONNX exporter
+    # which handles both RoPE buffers and ``dynamic_axes`` correctly.
+    torch_version = _torch_version_tuple()
+    use_dynamo_false = torch_version >= (2, 12)
 
     with torch.no_grad():
-        if dynamic_shapes is not None:
-            # Strategy 1: dynamo-native path with dynamic_shapes
-            # Only input shapes are passed — outputs are inferred.
-            input_shapes = {
-                name: shapes for name, shapes in dynamic_shapes.items()
-                if name in input_names
-            }
-            try:
-                torch.onnx.export(
-                    model,
-                    args=args,
-                    f=str(onnx_path),
-                    input_names=input_names,
-                    output_names=output_names,
-                    dynamic_shapes=input_shapes,
-                    opset_version=17,
-                    do_constant_folding=True,
-                    verbose=verbose,
-                )
-            except Exception:
-                logger.warning(
-                    "dynamo export failed for '%s' — "
-                    "falling back to legacy exporter with Transpose repair",
-                    model_name,
-                    exc_info=True,
-                )
-                # Strategy 2: legacy exporter
-                torch.onnx.export(
-                    model,
-                    args=args,
-                    f=str(onnx_path),
-                    input_names=input_names,
-                    output_names=output_names,
-                    dynamic_axes=dynamic_axes,
-                    opset_version=18,
-                    do_constant_folding=True,
-                    verbose=verbose,
-                    dynamo=False,
-                )
-        else:
-            # PyTorch < 2.1 — no dynamo path available
-            torch.onnx.export(
-                model,
-                args=args,
-                f=str(onnx_path),
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=18,
-                do_constant_folding=True,
-                verbose=verbose,
-                dynamo=False,
+        export_kwargs = dict(
+            model=model,
+            args=args,
+            f=str(onnx_path),
+            input_names=input_names,
+            output_names=output_names,
+            dynamic_axes=dynamic_axes,
+            opset_version=18,
+            do_constant_folding=True,
+            verbose=verbose,
+        )
+
+        if use_dynamo_false:
+            export_kwargs["dynamo"] = False
+            logger.debug(
+                "PyTorch %s: using legacy ONNX exporter (dynamo=False)",
+                torch.__version__,
             )
+
+        torch.onnx.export(**export_kwargs)
 
     logger.info("Export complete — verifying ONNX model ...")
     onnx_model = onnx.load(str(onnx_path))
 
     # Fix any Transpose nodes with -1 perm (legacy exporter may emit these)
     if _patch_neg_transpose(onnx_model):
-        logger.info("Repaired %d Transpose node(s) with -1 perm", 1)
+        logger.info("Repaired Transpose node(s) with -1 perm")
         onnx.save(onnx_model, str(onnx_path))
         onnx_model = onnx.load(str(onnx_path))
 
